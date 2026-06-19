@@ -65,14 +65,10 @@ async def search_content(
     """Full-text search on content table."""
     client = await get_client()
     
-    # Build PostgREST FTS query
-    # Convert query to tsquery format: "MRI brain" -> "MRI & brain"
-    terms = query.strip().split()
-    tsquery = " & ".join(terms)
-    
+    # Build PostgREST FTS query using websearch_to_tsquery (handles natural language)
     params = {
         "select": "slug,url,title,description,category,source,tags,author,publish_date",
-        "fts": f"fts.to_tsquery.{tsquery}",
+        "fts": f"wfts(english).{query}",
         "limit": str(limit),
     }
     if category:
@@ -120,9 +116,7 @@ async def search_providers(
     }
     
     if query:
-        terms = query.strip().split()
-        tsquery = " & ".join(terms)
-        params["fts"] = f"fts.to_tsquery.{tsquery}"
+        params["fts"] = f"wfts(english).{query}"
     
     if state:
         params["state"] = f"eq.{state.upper()}"
