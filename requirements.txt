@@ -1,0 +1,13 @@
+# Sage MCP Public - Dependencies
+# MCP server
+mcp>=1.9.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+
+# HTTP client for Supabase REST API
+httpx>=0.28.0
+
+# Utilities
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+python-dotenv>=1.0.1
