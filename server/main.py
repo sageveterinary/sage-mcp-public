@@ -237,6 +237,37 @@ async def health():
     }
 
 
+@app.get("/.well-known/mcp.json")
+async def mcp_discovery():
+    """MCP discovery endpoint — tells AI agents where to find this MCP server."""
+    return {
+        "mcp_version": "2025-03-26",
+        "name": "Sage Veterinary Imaging",
+        "description": (
+            "Public MCP server for Sage Veterinary Imaging — "
+            "veterinary diagnostic imaging services, 800+ provider directory, "
+            "pricing, locations, educational content, and clinical resources. "
+            "No patient data. Fully public."
+        ),
+        "url": "https://mcp.sageveterinary.com/mcp",
+        "transport": {
+            "type": "sse",
+            "url": "https://mcp.sageveterinary.com/mcp/sse",
+        },
+        "capabilities": {
+            "tools": True,
+            "resources": False,
+            "prompts": False,
+        },
+        "tool_count": 8,
+        "authentication": None,
+        "contact": {
+            "website": "https://www.sageveterinary.com",
+            "email": "support@sageveterinary.com",
+        },
+    }
+
+
 # Mount MCP at /mcp (SSE transport — proven stable with Railway)
 mcp_app = mcp.sse_app()
 app.mount("/mcp", mcp_app)
