@@ -237,8 +237,8 @@ async def health():
     }
 
 
-# Mount MCP at /mcp
-mcp_app = mcp.streamable_http_app()
+# Mount MCP at /mcp (SSE transport — proven stable with Railway)
+mcp_app = mcp.sse_app()
 app.mount("/mcp", mcp_app)
 
 
