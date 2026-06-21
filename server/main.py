@@ -749,6 +749,168 @@ async def mcp_discovery():
     }
 
 
+@app.get("/.well-known/mcp/server-card.json")
+async def smithery_server_card():
+    """Smithery server-card.json — static metadata for registry indexing.
+
+    Smithery uses this to skip automatic scanning when it can't connect
+    via the MCP transport directly. See: https://smithery.ai/docs/build/publish
+    """
+    return {
+        "serverInfo": {
+            "name": "Sage Veterinary Imaging MCP",
+            "version": "1.0.0",
+        },
+        "authentication": {
+            "required": False,
+        },
+        "tools": [
+            {
+                "name": "search_content",
+                "description": "Full-text search across 500+ pages of website content, blog posts, and educational articles from sageveterinary.com and sageteleradiology.com.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search terms"},
+                        "category": {"type": "string", "description": "Filter by content type"},
+                        "source": {"type": "string", "description": "Filter by website"},
+                        "limit": {"type": "integer", "description": "Max results (default 10)"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "get_page",
+                "description": "Get full content of a specific page by its URL slug.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "slug": {"type": "string", "description": "URL slug of the page"},
+                    },
+                    "required": ["slug"],
+                },
+            },
+            {
+                "name": "search_providers",
+                "description": "Search the veterinary imaging provider directory (800+ facilities across 41 states).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Name, city, or metro area"},
+                        "state": {"type": "string", "description": "Two-letter state code"},
+                        "modality": {"type": "string", "description": "CT, MRI, Ultrasound, Echocardiography"},
+                        "svi_only": {"type": "boolean", "description": "Only SVI locations"},
+                        "limit": {"type": "integer", "description": "Max results (default 20)"},
+                    },
+                },
+            },
+            {
+                "name": "get_provider",
+                "description": "Get detailed info for a specific provider by slug.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "slug": {"type": "string", "description": "Provider slug"},
+                    },
+                    "required": ["slug"],
+                },
+            },
+            {
+                "name": "get_pricing",
+                "description": "Get current SVI pricing for all imaging services.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "category": {"type": "string", "description": "Filter by service category"},
+                    },
+                },
+            },
+            {
+                "name": "get_location_info",
+                "description": "Get SVI location details — address, phone, hours, modalities.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "slug": {"type": "string", "description": "Location slug (omit for all 3)"},
+                    },
+                },
+            },
+            {
+                "name": "get_company_info",
+                "description": "Get company information, FAQs, and policies.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "category": {"type": "string", "description": "Filter by info category"},
+                    },
+                },
+            },
+            {
+                "name": "get_service_info",
+                "description": "Get information about SVI imaging services.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string", "description": "Service slug (omit for all)"},
+                    },
+                },
+            },
+            {
+                "name": "clinical_decision_support",
+                "description": "Get imaging recommendations based on clinical signs and symptoms. Returns modality, body regions, pricing, and clinical rationale.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "symptoms": {"type": "string", "description": "Natural language symptom description"},
+                        "symptom_ids": {"type": "array", "items": {"type": "string"}, "description": "Specific clinical sign IDs"},
+                        "species": {"type": "string", "description": "dog or cat"},
+                        "breed": {"type": "string", "description": "Breed name for breed-specific alerts"},
+                        "urgency": {"type": "string", "description": "standard, urgent, or stat"},
+                    },
+                },
+            },
+            {
+                "name": "list_clinical_signs",
+                "description": "List all available clinical signs and body regions for the decision support tool.",
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "find_nearest_provider",
+                "description": "Find the nearest veterinary imaging providers to a location. Input zip code, city+state, or lat/lng.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "zip_code": {"type": "string", "description": "US zip code"},
+                        "city": {"type": "string", "description": "City name"},
+                        "state": {"type": "string", "description": "Two-letter state code"},
+                        "latitude": {"type": "number", "description": "Latitude"},
+                        "longitude": {"type": "number", "description": "Longitude"},
+                        "modality": {"type": "string", "description": "Filter by modality"},
+                        "radius_miles": {"type": "number", "description": "Search radius (default 100)"},
+                        "limit": {"type": "integer", "description": "Max results (default 10)"},
+                    },
+                },
+            },
+            {
+                "name": "estimate_price",
+                "description": "Get a structured price estimate for SVI imaging services with line-item breakdown.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "modality": {"type": "string", "description": "MRI, CT, Ultrasound, or Echocardiogram"},
+                        "sites": {"type": "integer", "description": "Number of body regions (default 1)"},
+                        "contrast": {"type": "boolean", "description": "Whether IV contrast is needed"},
+                        "urgency": {"type": "string", "description": "standard, urgent, or stat"},
+                    },
+                    "required": ["modality"],
+                },
+            },
+        ],
+        "resources": [],
+        "prompts": [],
+    }
+
+
 # Mount MCP at /mcp (SSE transport — proven stable with Railway)
 mcp_app = mcp.sse_app()
 app.mount("/mcp", mcp_app)
