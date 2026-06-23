@@ -28,6 +28,12 @@ from server.radiology_engine import (
     ALL_SIGN_IDS,
     PRICING,
 )
+from server.patient_prep import (
+    resolve_modality,
+    get_prep,
+    list_modalities,
+    PREP_DATA,
+)
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger("sage-mcp-public")
@@ -42,7 +48,8 @@ mcp = FastMCP(
         "veterinary imaging provider directory (800+ facilities nationwide), "
         "SVI pricing, location info, company details, "
         "clinical decision support (symptom → imaging recommendation), "
-        "nearest provider finder with distance, and structured price estimates. "
+        "nearest provider finder with distance, structured price estimates, "
+        "and patient preparation guides for all imaging modalities. "
         "NO patient data — public information only."
     ),
     host="0.0.0.0",
@@ -680,6 +687,91 @@ async def estimate_price(
     return json.dumps(result, default=str)
 
 
+# ─── Patient Prep Guide Tool ─────────────────────────────────────────────────
+
+
+@mcp.tool()
+async def get_patient_prep(
+    modality: str,
+    species: str | None = None,
+    section: str | None = None,
+) -> str:
+    """Get structured patient preparation instructions for a specific imaging modality.
+
+    Returns fasting requirements, anxiety medication instructions, what to bring,
+    arrival/pickup process, procedure details, aftercare, and payment info.
+
+    Covers all 8 SVI modalities: MRI, CT, Ultrasound, Radiograph, Echocardiogram,
+    Scintigraphy, CATT/I-131, and Synovetin OA.
+
+    Useful when a pet owner or veterinarian asks "what do I need to do before
+    my pet's MRI?" or "how should I prepare for a CT appointment?"
+
+    Args:
+        modality: Imaging modality — "MRI", "CT", "Ultrasound", "Radiograph",
+                  "Echocardiogram" (or "Echo"), "Scintigraphy" (or "nuclear scan"),
+                  "CATT" (or "I-131"), "Synovetin" (or "Synovetin OA").
+                  Also accepts aliases like "x-ray", "sono", "cat scan".
+        species: Optional filter — "dog" or "cat". If provided, only returns
+                 modalities available for that species. (e.g., Scintigraphy and
+                 CATT are cat-only; Synovetin OA is dog-only.)
+        section: Optional — return only a specific section instead of all prep data.
+                 Valid sections: "fasting", "anxiety_medication", "estimated_duration",
+                 "what_to_bring", "arrival", "procedure_notes", "aftercare", "payment",
+                 "resources". If omitted, returns everything.
+    """
+    # Handle "all" / list request
+    if modality.strip().lower() in ("all", "list", ""):
+        modalities = list_modalities()
+        if species:
+            modalities = [m for m in modalities if species.lower() in m["species"]]
+        return json.dumps({
+            "available_modalities": modalities,
+            "count": len(modalities),
+            "tip": "Pass a specific modality name to get full prep instructions.",
+        })
+
+    # Resolve modality
+    key = resolve_modality(modality)
+    if not key:
+        return json.dumps({
+            "error": f"Unknown modality '{modality}'.",
+            "available_modalities": list_modalities(),
+            "tip": "Try 'MRI', 'CT', 'Ultrasound', 'Radiograph', 'Echo', 'Scintigraphy', 'CATT', or 'Synovetin'.",
+        })
+
+    prep = get_prep(key)
+    if not prep:
+        return json.dumps({"error": f"No prep data found for '{key}'."})
+
+    # Species filter
+    if species and species.lower() not in prep.get("species", []):
+        return json.dumps({
+            "error": f"{prep['modality_label']} is not typically performed on {species}s at SVI.",
+            "available_species": prep["species"],
+        })
+
+    # Section filter
+    if section:
+        section_key = section.strip().lower().replace(" ", "_")
+        if section_key in prep:
+            return json.dumps({
+                "modality": prep["modality_label"],
+                "section": section_key,
+                "data": prep[section_key],
+            })
+        else:
+            return json.dumps({
+                "error": f"Unknown section '{section}'.",
+                "available_sections": [
+                    k for k in prep.keys()
+                    if k not in ("modality", "modality_label", "species")
+                ],
+            })
+
+    return json.dumps(prep, default=str)
+
+
 # ─── FastAPI App (health + MCP mount) ────────────────────────────────────────
 
 
@@ -740,7 +832,7 @@ async def mcp_discovery():
             "resources": False,
             "prompts": False,
         },
-        "tool_count": 12,
+        "tool_count": 13,
         "authentication": None,
         "contact": {
             "website": "https://www.sageveterinary.com",
@@ -901,6 +993,19 @@ async def smithery_server_card():
                         "sites": {"type": "integer", "description": "Number of body regions (default 1)"},
                         "contrast": {"type": "boolean", "description": "Whether IV contrast is needed"},
                         "urgency": {"type": "string", "description": "standard, urgent, or stat"},
+                    },
+                    "required": ["modality"],
+                },
+            },
+            {
+                "name": "get_patient_prep",
+                "description": "Get structured patient preparation instructions for a specific imaging modality — fasting, anxiety meds, what to bring, arrival/pickup, aftercare, payment.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "modality": {"type": "string", "description": "MRI, CT, Ultrasound, Radiograph, Echo, Scintigraphy, CATT/I-131, or Synovetin OA"},
+                        "species": {"type": "string", "description": "dog or cat (optional filter)"},
+                        "section": {"type": "string", "description": "Return only a specific section (fasting, anxiety_medication, etc.)"},
                     },
                     "required": ["modality"],
                 },
