@@ -22,6 +22,18 @@ Model Context Protocol server for Sage Veterinary Imaging's public data.
 - `get_company_info` — Company info, FAQs, policies
 - `get_service_info` — Imaging service descriptions
 
+## Endpoints
+
+| Path | Purpose |
+|------|---------|
+| `/` | Public landing page (docs + connect instructions, crawlable) |
+| `/mcp/http` | **Streamable HTTP transport** — recommended for MCP clients |
+| `/mcp/sse` | SSE transport (legacy, still supported) |
+| `/.well-known/mcp.json` | Discovery document |
+| `/health` | Health check |
+
+Note: `mcp` is pinned `<2.0.0` — mcp 2.x removed `mcp.server.fastmcp`.
+
 ## Architecture
 
 ```
