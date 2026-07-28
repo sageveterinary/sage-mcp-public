@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Response
+from fastapi.responses import RedirectResponse
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
@@ -775,13 +776,22 @@ async def get_patient_prep(
 # ─── FastAPI App (health + MCP mount) ────────────────────────────────────────
 
 
+# Streamable-HTTP transport app. Built at import time so `mcp.session_manager`
+# exists for the lifespan below. Served at /mcp/http (the SSE transport keeps
+# /mcp/sse — the two cannot share the same mount path).
+mcp.settings.streamable_http_path = "/"
+streamable_app = mcp.streamable_http_app()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and clean up resources."""
     logger.info("Starting Sage MCP Public server...")
     await db.get_client()
     logger.info("Database connection established")
-    yield
+    async with mcp.session_manager.run():
+        logger.info("Streamable HTTP session manager started")
+        yield
     await db.close()
     logger.info("Server shutting down")
 
@@ -791,6 +801,128 @@ app = FastAPI(
     description="Public company data MCP server for Sage Veterinary Imaging",
     lifespan=lifespan,
 )
+
+
+LANDING_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sage Veterinary Imaging — Public MCP Server</title>
+<meta name="description" content="Public Model Context Protocol (MCP) server for Sage Veterinary Imaging: veterinary imaging pricing, 800+ provider directory, locations, imaging recommendations and patient prep. No patient data.">
+<link rel="canonical" href="https://mcp.sageveterinary.com/">
+<style>
+  :root { --ink:#1b2a2f; --muted:#5d6f75; --line:#e3e9ea; --accent:#2f7d72; --bg:#fbfcfc; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  .wrap { max-width:820px; margin:0 auto; padding:56px 24px 80px; }
+  h1 { font-size:30px; line-height:1.25; margin:0 0 8px; letter-spacing:-.02em; }
+  h2 { font-size:17px; margin:40px 0 12px; letter-spacing:-.01em; }
+  p.lede { color:var(--muted); font-size:18px; margin:0 0 28px; }
+  .badge { display:inline-block; font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+           color:var(--accent); font-weight:700; margin-bottom:14px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:left; padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; }
+  code,pre { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+  code { background:#eef3f2; padding:2px 6px; border-radius:4px; }
+  pre { background:#12211f; color:#e6f2ef; padding:16px; border-radius:10px; overflow:auto; }
+  a { color:var(--accent); }
+  footer { margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
+           color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="badge">Model Context Protocol server</div>
+  <h1>Sage Veterinary Imaging — Public MCP</h1>
+  <p class="lede">A public, no-auth MCP endpoint that lets AI assistants answer questions about
+  veterinary diagnostic imaging: SVI pricing and locations, a directory of 800+ imaging providers
+  across 40 states, imaging recommendations by clinical sign, and patient preparation guides.
+  <strong>No patient data is served here.</strong></p>
+
+  <h2>Endpoints</h2>
+  <table>
+    <tr><th>Transport</th><th>URL</th></tr>
+    <tr><td>Streamable HTTP</td><td><code>https://mcp.sageveterinary.com/mcp/http</code></td></tr>
+    <tr><td>SSE (legacy)</td><td><code>https://mcp.sageveterinary.com/mcp/sse</code></td></tr>
+    <tr><td>Discovery</td><td><a href="/.well-known/mcp.json">/.well-known/mcp.json</a></td></tr>
+    <tr><td>Health</td><td><a href="/health">/health</a></td></tr>
+  </table>
+
+  <h2>Connect (Claude Desktop / any MCP client)</h2>
+<pre>{
+  "mcpServers": {
+    "sage-veterinary": {
+      "url": "https://mcp.sageveterinary.com/mcp/http"
+    }
+  }
+}</pre>
+
+  <h2>Tools</h2>
+  <table>
+    <tr><th>Tool</th><th>What it returns</th></tr>
+    <tr><td><code>search_content</code></td><td>Full-text search across 500+ pages of SVI website and educational content</td></tr>
+    <tr><td><code>get_page</code></td><td>A specific page by URL slug</td></tr>
+    <tr><td><code>search_providers</code></td><td>Veterinary imaging facilities by location and modality</td></tr>
+    <tr><td><code>get_provider</code></td><td>Provider detail by slug</td></tr>
+    <tr><td><code>find_nearest_providers</code></td><td>Closest imaging providers with distance</td></tr>
+    <tr><td><code>get_pricing</code> / <code>estimate_price</code></td><td>SVI service pricing and structured estimates</td></tr>
+    <tr><td><code>get_location_info</code></td><td>Round Rock TX, Spring TX, Sandy UT — address, phone, modalities</td></tr>
+    <tr><td><code>get_company_info</code> / <code>get_service_info</code></td><td>Company details, FAQs, imaging service descriptions</td></tr>
+    <tr><td><code>search_symptoms</code> / <code>get_recommendation</code></td><td>Clinical sign &rarr; recommended imaging study</td></tr>
+    <tr><td><code>get_patient_prep</code></td><td>Prep instructions by modality (fasting, meds, arrival, aftercare)</td></tr>
+  </table>
+
+  <footer>
+    Operated by <a href="https://www.sageveterinary.com">Sage Veterinary Imaging</a> ·
+    Questions: <a href="mailto:support@sageveterinary.com">support@sageveterinary.com</a> ·
+    Public information only — no PHI, no patient records.
+  </footer>
+</div>
+</body>
+</html>
+"""
+
+
+@app.get("/", include_in_schema=False)
+async def landing():
+    """Human- and crawler-readable landing page (also stops the / 404s)."""
+    return Response(content=LANDING_HTML, media_type="text/html; charset=utf-8")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots():
+    return Response(
+        content="User-agent: *\nAllow: /\nSitemap: https://mcp.sageveterinary.com/sitemap.xml\n",
+        media_type="text/plain",
+    )
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap():
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url><loc>https://mcp.sageveterinary.com/</loc><priority>1.0</priority></url>\n"
+        "</urlset>\n"
+    )
+    return Response(content=xml, media_type="application/xml")
+
+
+@app.api_route(
+    "/mcp/http", methods=["GET", "POST", "DELETE"], include_in_schema=False
+)
+async def streamable_no_slash():
+    """The streamable-HTTP app is mounted at /mcp/http/ — 307 keeps method+body."""
+    return RedirectResponse(url="/mcp/http/", status_code=307)
+
+
+@app.get("/mcp", include_in_schema=False)
+async def mcp_root():
+    """Browsers hitting /mcp got a bare 404 — send them to the docs instead."""
+    return RedirectResponse(url="/", status_code=302)
 
 
 @app.get("/health")
@@ -822,11 +954,15 @@ async def mcp_discovery():
             "pricing, locations, educational content, and clinical resources. "
             "No patient data. Fully public."
         ),
-        "url": "https://mcp.sageveterinary.com/mcp",
+        "url": "https://mcp.sageveterinary.com/mcp/http",
         "transport": {
-            "type": "sse",
-            "url": "https://mcp.sageveterinary.com/mcp/sse",
+            "type": "streamable-http",
+            "url": "https://mcp.sageveterinary.com/mcp/http",
         },
+        "transports": [
+            {"type": "streamable-http", "url": "https://mcp.sageveterinary.com/mcp/http"},
+            {"type": "sse", "url": "https://mcp.sageveterinary.com/mcp/sse"},
+        ],
         "capabilities": {
             "tools": True,
             "resources": False,
@@ -1016,7 +1152,11 @@ async def smithery_server_card():
     }
 
 
-# Mount MCP at /mcp (SSE transport — proven stable with Railway)
+# Mount transports. Order matters: the more specific /mcp/http mount must be
+# registered before the /mcp mount, which prefix-matches everything under /mcp.
+app.mount("/mcp/http", streamable_app)
+
+# SSE transport (legacy, still the published URL) — /mcp/sse
 mcp_app = mcp.sse_app()
 app.mount("/mcp", mcp_app)
 

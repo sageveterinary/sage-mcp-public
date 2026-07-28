@@ -1,6 +1,7 @@
 # Sage MCP Public - Dependencies
 # MCP server
-mcp>=1.9.0
+# Pinned below 2.0 — mcp 2.x removed the mcp.server.fastmcp module this server uses.
+mcp>=1.9.0,<2.0.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
 
