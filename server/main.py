@@ -28,6 +28,7 @@ from server.radiology_engine import (
     list_available_symptoms,
     ALL_SIGN_IDS,
     PRICING,
+    PRICING_SERVICE_NAMES,
 )
 from server.patient_prep import (
     resolve_modality,
@@ -254,6 +255,7 @@ async def clinical_decision_support(
         body_regions: Optional list of body region IDs to override the engine's automatic
                       region selection. Use list_clinical_signs to see available regions.
     """
+    await refresh_pricing()
     # Collect tags from both natural language and explicit IDs
     tags: set[str] = set()
     if symptoms:
@@ -554,6 +556,36 @@ async def find_nearest_provider(
     }, default=str)
 
 
+# ── Live pricing from the Supabase `pricing` table (fed daily from the sheet) ──
+_PRICING_TTL_SECONDS = 600
+_pricing_loaded_at = 0.0
+
+
+async def refresh_pricing(force: bool = False) -> None:
+    """Overwrite PRICING in place from the pricing table (10-minute cache).
+
+    Keeps the previous values if the table can't be read, so estimates never fail.
+    """
+    global _pricing_loaded_at
+    import time
+    if not force and time.time() - _pricing_loaded_at < _PRICING_TTL_SECONDS:
+        return
+    try:
+        rows = await db.get_pricing()
+        by_name = {(r.get("service_name") or "").strip().lower(): r for r in rows}
+        updated = 0
+        for key, name in PRICING_SERVICE_NAMES.items():
+            row = by_name.get(name.strip().lower())
+            if row and row.get("price_min") is not None:
+                val = float(row["price_min"])
+                PRICING[key] = int(val) if val.is_integer() else val
+                updated += 1
+        _pricing_loaded_at = time.time()
+        logger.info("Pricing refreshed from table: %d/%d keys", updated, len(PRICING_SERVICE_NAMES))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Pricing refresh failed, keeping previous values: %s", e)
+
+
 @mcp.tool()
 async def estimate_price(
     modality: str,
@@ -570,11 +602,13 @@ async def estimate_price(
     Args:
         modality: Imaging modality - "MRI", "CT", "Ultrasound", "Echocardiogram"
         sites: Number of body regions/sites to image (default 1). For MRI: each
-               additional site after the first adds $950. For CT: $595 per additional site.
-        contrast: Whether IV contrast is needed (applies to CT — adds $365 to base)
+               additional site after the first adds the MRI additional-site fee; CT adds
+               the CT additional-site fee (current amounts come from the price sheet).
+        contrast: Whether IV contrast is needed (applies to CT — uses the CT with Contrast price)
         urgency: "standard", "urgent", or "stat" — STAT adds a rush fee
-        combo_echo_us: If true, uses combo Echo + Abdominal US pricing ($1,485)
+        combo_echo_us: If true, uses the combo Echo + Abdominal US price
     """
+    await refresh_pricing()
     modality_upper = modality.upper().strip()
     sites = max(1, min(sites, 5))
 

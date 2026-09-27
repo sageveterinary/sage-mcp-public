@@ -12,7 +12,29 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-# ── Pricing defaults ─────────────────────────────────────────────────
+# ── Pricing ──────────────────────────────────────────────────────────
+# Source of truth is James's "SVI and Sage Teleradiology Pricing Table 2026"
+# Google Sheet (Sheet1). A daily job copies it into the Supabase `pricing`
+# table; server.main.refresh_pricing() overwrites these defaults in place from
+# that table (by exact service name, see PRICING_SERVICE_NAMES) before every
+# estimate. The numbers below are only a fallback if the table is unreachable.
+PRICING_SERVICE_NAMES = {
+    "mri1": "Diagnostic MRI (Includes anesthesia, IVF & radiologist consult)",
+    "mri_pkg": "Diagnostic MRI Package (Includes bloodwork)",
+    "mri_add": "Additional Site Scan Fee (MRI)",
+    "ct": "Standard CT (Without Contrast)",
+    "ct_con": "CT with Contrast",
+    "ct_add": "Additional Site Scan Fee (CT)",
+    "us": "Abdominal, Cervical or Thyroid Ultrasound",
+    "us_add": "Additional Site Scan Fee (Ultrasound)",
+    "echo": "Echocardiogram",
+    "echo_us": "Echocardiogram + Abdominal Ultrasound",
+    "bw": "Comprehensive Bloodwork (Chem 17, Lyte 4 & CBC)",
+    "stat_mri": "STAT Fee (MRI - Same Day, Fully Booked)",
+    "stat_ct": "STAT Fee (CT - Same Day, Fully Booked, After Hours, or Weekend)",
+    "stat_us": "STAT Fee (Ultrasound - Same Day, Fully Booked)",
+}
+
 PRICING = {
     "mri1": 3445,
     "mri_pkg": 3820,
@@ -23,8 +45,8 @@ PRICING = {
     "us": 635,
     "us_add": 635,
     "echo": 750,
-    "echo_us": 1485,
-    "bw": 375,
+    "echo_us": 1385,
+    "bw": 365,
     "stat_mri": 320,
     "stat_ct": 240,
     "stat_us": 135,

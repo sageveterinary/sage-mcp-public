@@ -160,7 +160,8 @@ async def get_pricing(category: str | None = None) -> list[dict]:
     if category:
         params["category"] = f"eq.{category}"
     
-    return await query_table("pricing", **{k: v for k, v in params.items() if k == "select"}, filters={k: v for k, v in params.items() if k != "select"})
+    # limit=500: the sheet has 50+ services; the default 50 silently cut off the last rows
+    return await query_table("pricing", **{k: v for k, v in params.items() if k == "select"}, filters={k: v for k, v in params.items() if k != "select"}, limit=500)
 
 
 async def get_locations() -> list[dict]:
