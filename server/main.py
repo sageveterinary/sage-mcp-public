@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Response
 from fastapi.responses import RedirectResponse
+from starlette.middleware.cors import CORSMiddleware
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
@@ -63,6 +64,10 @@ mcp = FastMCP(
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=False,
     ),
+    # Stateless: every request stands alone, so clients that never send back
+    # (or cannot read) the mcp-session-id header still work — e.g. browser-based
+    # agent builders such as Aircall's. No tool here needs per-session state.
+    stateless_http=True,
 )
 
 
@@ -1264,6 +1269,19 @@ async def favicon():
 # Usage logging + /mcp/http trailing-slash rewrite (replaces the old 307).
 instrument_tool_calls(mcp)
 app.add_middleware(UsageMiddleware)
+
+# CORS — added last so it is the outermost layer and answers browser preflight
+# (OPTIONS) before anything else. Without it, browser-based MCP clients are
+# blocked before a session can start. Public data only, so any origin is fine;
+# no cookies/credentials are used.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["mcp-session-id", "mcp-protocol-version"],
+    max_age=86400,
+)
 
 # Mount transports. Order matters: the more specific /mcp/http mount must be
 # registered before the /mcp mount, which prefix-matches everything under /mcp.

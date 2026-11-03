@@ -15,6 +15,7 @@ import time
 from typing import Any
 
 from server import database as db
+from server.config import settings
 
 logger = logging.getLogger("sage-mcp-public.usage")
 
@@ -25,6 +26,32 @@ SCANNER_HINTS = (
     ".env", ".git", ".aws", "wp-", "php", ".yml", ".yaml", "config", "admin",
     "backup", ".bak", ".sql", "credentials", "actuator", "cgi-bin", ".ds_store",
 )
+
+
+def _partner_map() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for item in (settings.partner_keys or "").split(","):
+        label, _, key = item.strip().partition(":")
+        if label and key:
+            out[key.strip()] = label.strip()
+    return out
+
+
+PARTNER_KEYS = _partner_map()
+
+
+def partner_label(get_header) -> str | None:
+    """Label for a known partner key, else None. Never used to deny access."""
+    if not PARTNER_KEYS:
+        return None
+    auth = (get_header("authorization") or "").strip()
+    key = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    key = key or (get_header("x-api-key") or "").strip()
+    return PARTNER_KEYS.get(key) if key else None
+
+
+def _tag(ua: str | None, label: str | None) -> str | None:
+    return f"[partner:{label}] {ua or ''}".strip()[:500] if label else ua
 
 
 def _fire(table: str, row: dict[str, Any]) -> None:
@@ -118,7 +145,10 @@ class UsageMiddleware:
                     "query": (scope.get("query_string") or b"").decode("latin-1")[:500] or None,
                     "status": message.get("status"),
                     "duration_ms": int((time.monotonic() - start) * 1000),
-                    "user_agent": (_header(headers, b"user-agent") or "")[:500] or None,
+                    "user_agent": _tag(
+                        (_header(headers, b"user-agent") or "")[:500] or None,
+                        partner_label(lambda n: _header(headers, n.encode())),
+                    ),
                     "ip": _client_ip(scope),
                     "host": _header(headers, b"host"),
                     "session_id": _header(headers, b"mcp-session-id"),
@@ -160,7 +190,10 @@ def instrument_tool_calls(mcp) -> None:
                 rc = context.request_context if context else None
                 req = getattr(rc, "request", None)
                 if req is not None and hasattr(req, "headers"):
-                    row["user_agent"] = (req.headers.get("user-agent") or "")[:500] or None
+                    row["user_agent"] = _tag(
+                        (req.headers.get("user-agent") or "")[:500] or None,
+                        partner_label(req.headers.get),
+                    )
                     row["session_id"] = req.headers.get("mcp-session-id")
                     fwd = req.headers.get("x-forwarded-for") or req.headers.get("x-real-ip")
                     row["ip"] = fwd.split(",")[0].strip() if fwd else (req.client.host if req.client else None)
