@@ -1,7 +1,7 @@
 # Sage MCP Public - direct dependencies (allowed ranges). requirements.txt holds the exact pinned versions production installs.
 # MCP server
 # Pinned below 2.0 — mcp 2.x removed the mcp.server.fastmcp module this server uses.
-mcp>=1.9.0,<2.0.0
+mcp>=2.3.0,<3.0.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
 
