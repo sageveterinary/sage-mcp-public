@@ -1,0 +1,23 @@
+# Weekly update requests. Railway deploys only from main, so nothing reaches
+# production until a reviewed update is merged with James's go.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
